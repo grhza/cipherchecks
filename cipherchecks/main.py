@@ -6,7 +6,17 @@ import crayons
 import sslyze
 
 
-def scan_target(target, port) -> list:
+def scan_target(target: str, port: int) -> list:
+    """
+    Scans a target for accepted cipher suites using sslyze.
+
+    Args:
+        target (str): The hostname or IP address of the target.
+        port (int): The port number to connect to.
+
+    Returns:
+        list: A list of formatted strings representing the accepted ciphers.
+    """
     try:
         server_scan_req = sslyze.ServerScanRequest(
             server_location=sslyze.ServerNetworkLocation(hostname=target, port=port),
@@ -46,7 +56,7 @@ def scan_target(target, port) -> list:
         tls1_3_result = server_scan_result.scan_result.tls_1_3_cipher_suites
 
         if ssl2_result.result.accepted_cipher_suites:
-            accepted_ciphers.append('\nAccepted Ciphers for {}:'.format(crayons.red('SSL 2.0')))
+            accepted_ciphers.append(f'\nAccepted Ciphers for {crayons.red("SSL 2.0")}:')
             for accepted_cipher_suite in ssl2_result.result.accepted_cipher_suites:
                 if 'CBC' in str(accepted_cipher_suite) and 'DHE' not in str(accepted_cipher_suite):
                     accepted_ciphers.append('\t' + '- ' + crayons.magenta(accepted_cipher_suite.cipher_suite.name))
@@ -58,7 +68,7 @@ def scan_target(target, port) -> list:
                     accepted_ciphers.append('\t' + '- ' + accepted_cipher_suite.cipher_suite.name)
 
         if ssl3_result.result.accepted_cipher_suites:
-            accepted_ciphers.append('\nAccepted Ciphers for {}:'.format(crayons.red('SSL 2.0')))
+            accepted_ciphers.append(f'\nAccepted Ciphers for {crayons.red("SSL 3.0")}:')
             for accepted_cipher_suite in ssl3_result.result.accepted_cipher_suites:
                 if 'CBC' in str(accepted_cipher_suite) and 'DHE' not in str(accepted_cipher_suite):
                     accepted_ciphers.append('\t' + '- ' + crayons.magenta(accepted_cipher_suite.cipher_suite.name))
@@ -70,7 +80,7 @@ def scan_target(target, port) -> list:
                     accepted_ciphers.append('\t' + '- ' + accepted_cipher_suite.cipher_suite.name)
 
         if tls1_0_result.result.accepted_cipher_suites:
-            accepted_ciphers.append('\nAccepted Ciphers for {}:'.format(crayons.red('TLS 1.0')))
+            accepted_ciphers.append(f'\nAccepted Ciphers for {crayons.red("TLS 1.0")}:')
             for accepted_cipher_suite in tls1_0_result.result.accepted_cipher_suites:
                 if 'CBC' in str(accepted_cipher_suite) and 'DHE' not in str(accepted_cipher_suite):
                     accepted_ciphers.append('\t' + '- ' + crayons.magenta(accepted_cipher_suite.cipher_suite.name))
@@ -82,7 +92,7 @@ def scan_target(target, port) -> list:
                     accepted_ciphers.append('\t' + '- ' + accepted_cipher_suite.cipher_suite.name)
 
         if tls1_1_result.result.accepted_cipher_suites:
-            accepted_ciphers.append('\nAccepted Ciphers for {}:'.format(crayons.red('TLS 1.1')))
+            accepted_ciphers.append(f'\nAccepted Ciphers for {crayons.red("TLS 1.1")}:')
             for accepted_cipher_suite in tls1_1_result.result.accepted_cipher_suites:
                 if 'CBC' in str(accepted_cipher_suite) and 'DHE' not in str(accepted_cipher_suite):
                     accepted_ciphers.append('\t' + '- ' + crayons.magenta(accepted_cipher_suite.cipher_suite.name))
@@ -114,6 +124,10 @@ def scan_target(target, port) -> list:
 
 
 def main():
+    """
+    Main entry point for the cipherchecks tool.
+    Parses command line arguments and initiates the scan.
+    """
     sys.tracebacklimit = 0
 
     try:
@@ -125,7 +139,7 @@ def main():
         target = input('[+] target: ')
         port = int(input('[+] port: '))
 
-    print('[+] Checking Accepted Cipher Suites for: {}'.format(crayons.green(target)))
+    print(f'[+] Checking Accepted Cipher Suites for: {crayons.green(target)}')
     print((
         '\n'
         'Depreciated protocols are shown in {}\n'
