@@ -1,7 +1,7 @@
-FROM python:3.12-alpine
+FROM python:3.13-slim
 
 # Configure Poetry
-ENV POETRY_VERSION=1.7.0
+ENV POETRY_VERSION=2.2.1
 ENV POETRY_HOME=/opt/poetry
 ENV POETRY_VENV=/opt/poetry-venv
 ENV POETRY_CACHE_DIR=/opt/.cache
@@ -15,10 +15,13 @@ RUN python3 -m venv $POETRY_VENV \
 ENV PATH="${PATH}:${POETRY_VENV}/bin"
 
 WORKDIR /app
+# Install build dependencies
+RUN apt-get update && apt-get install -y build-essential cargo libffi-dev libssl-dev pkg-config
+
 
 # Install dependencies
 COPY poetry.lock pyproject.toml ./
-RUN poetry install
+RUN poetry update
 
 # Run your app
 COPY cipherchecks /app
