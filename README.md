@@ -2,7 +2,7 @@
 
 visually see issues with supported cipher suites
 
-[![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)
+[![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/downloads/release/python-3130/)
 
 Theres a few known tools out there that will check the cipher suites accepted by a system. This is my attempt in making the output of the results more readable.
 
@@ -77,11 +77,37 @@ This _tool_ attempts to make the output of the accepted ciphers a little more co
 
 ## installation
 
-There are two options to run cipherchecks. Either by building the docker container, or by running it from source.
+There are two options to run cipherchecks: Docker (recommended) or from source.
+
+### Docker
+
+```bash
+git clone https://github.com/sensepost/cipherchecks
+cd cipherchecks
+docker build -t cipherchecks .
+```
+
+Run interactively (prompts for target and port):
+
+```bash
+docker run --rm -it cipherchecks
+```
+
+Or pass the target and port directly as arguments:
+
+```bash
+docker run --rm cipherchecks google.com 443
+```
+
+To avoid typing the full command each time, add a shell alias:
+
+```bash
+alias cipherchk='docker run --rm -it cipherchecks'
+```
 
 ### from source
 
-You're going to need to install [poetry](https://python-poetry.org/docs/#installation) as it is used to manage dependencies.
+Requires Python 3.13+ and [Poetry](https://python-poetry.org/docs/#installation).
 
 ```bash
 git clone https://github.com/sensepost/cipherchecks
@@ -89,20 +115,13 @@ cd cipherchecks
 poetry install
 ```
 
-## using Docker
-
-This is currently the easiest and most reliable way to install cipherchecks.
-
-1. Install Docker and clone the Cipherchecks repo.
-2. Open up a terminal in the cloned repo.
-3. Build the Dockerfile with: `docker build -t sensepost/cipherchecks .`
-4. Run Cipherchecks with the following command:
+Then run via:
 
 ```bash
-docker run --rm -it sensepost/cipherchecks
+poetry run cipherchk google.com 443
+# or interactively
+poetry run cipherchk
 ```
-
-It's inconvenient to type that whole command each time you want to run Cipherchecks so I'd recommend making a script and adding it to your PATH or just adding an alias in your shell.
 
 ## license
 

@@ -21,8 +21,8 @@ RUN apt-get update && apt-get install -y build-essential cargo libffi-dev libssl
 
 # Install dependencies
 COPY poetry.lock pyproject.toml ./
-RUN poetry update
+RUN poetry install --no-root
 
 # Run your app
 COPY cipherchecks /app
-CMD [ "poetry", "run", "python", "main.py" ]
+ENTRYPOINT [ "poetry", "run", "python", "main.py" ]

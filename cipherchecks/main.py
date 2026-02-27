@@ -1,9 +1,52 @@
 #!/usr/bin/env python3
 
+import argparse
 import sys
 
-import crayons
+import colorama
+from colorama import Fore, Style
+
 import sslyze
+from sslyze import ScanCommandAttemptStatusEnum
+
+colorama.init(autoreset=True)
+
+# Protocol name, scan_result attribute name, deprecated flag
+PROTOCOL_CHECKS = [
+    ('SSL 2.0', 'ssl_2_0_cipher_suites', True),
+    ('SSL 3.0', 'ssl_3_0_cipher_suites', True),
+    ('TLS 1.0', 'tls_1_0_cipher_suites', True),
+    ('TLS 1.1', 'tls_1_1_cipher_suites', True),
+    ('TLS 1.2', 'tls_1_2_cipher_suites', False),
+    ('TLS 1.3', 'tls_1_3_cipher_suites', False),
+]
+
+
+def _colored(text: str, color: str, bold: bool = False) -> str:
+    prefix = Style.BRIGHT if bold else ''
+    return f'{prefix}{color}{text}{Style.RESET_ALL}'
+
+
+def _format_cipher(cipher_suite) -> str:
+    """
+    Returns a colored, formatted string for a cipher suite based on its security properties.
+
+    Magenta = CBC without PFS (worst)
+    Yellow  = CBC with PFS
+    Blue    = no CBC but missing PFS
+    Default = no issues flagged
+    """
+    name = cipher_suite.cipher_suite.name
+    has_cbc = 'CBC' in str(cipher_suite)
+    has_dhe = 'DHE' in str(cipher_suite)
+
+    if has_cbc and not has_dhe:
+        return f'\t- {_colored(name, Fore.MAGENTA)}'
+    elif has_cbc:
+        return f'\t- {_colored(name, Fore.YELLOW)}'
+    elif not has_dhe:
+        return f'\t- {_colored(name, Fore.BLUE)}'
+    return f'\t- {name}'
 
 
 def scan_target(target: str, port: int) -> list:
@@ -20,21 +63,22 @@ def scan_target(target: str, port: int) -> list:
     try:
         server_scan_req = sslyze.ServerScanRequest(
             server_location=sslyze.ServerNetworkLocation(hostname=target, port=port),
-            scan_commands={sslyze.ScanCommand.CERTIFICATE_INFO,
-                           sslyze.ScanCommand.SSL_2_0_CIPHER_SUITES,
-                           sslyze.ScanCommand.SSL_3_0_CIPHER_SUITES,
-                           sslyze.ScanCommand.TLS_1_0_CIPHER_SUITES,
-                           sslyze.ScanCommand.TLS_1_1_CIPHER_SUITES,
-                           sslyze.ScanCommand.TLS_1_2_CIPHER_SUITES,
-                           sslyze.ScanCommand.TLS_1_3_CIPHER_SUITES,
-                           sslyze.ScanCommand.HEARTBLEED,
-                           sslyze.ScanCommand.ROBOT,
-                           sslyze.ScanCommand.SESSION_RENEGOTIATION,
-                           sslyze.ScanCommand.HTTP_HEADERS},
+            scan_commands={
+                sslyze.ScanCommand.CERTIFICATE_INFO,
+                sslyze.ScanCommand.SSL_2_0_CIPHER_SUITES,
+                sslyze.ScanCommand.SSL_3_0_CIPHER_SUITES,
+                sslyze.ScanCommand.TLS_1_0_CIPHER_SUITES,
+                sslyze.ScanCommand.TLS_1_1_CIPHER_SUITES,
+                sslyze.ScanCommand.TLS_1_2_CIPHER_SUITES,
+                sslyze.ScanCommand.TLS_1_3_CIPHER_SUITES,
+                sslyze.ScanCommand.HEARTBLEED,
+                sslyze.ScanCommand.ROBOT,
+                sslyze.ScanCommand.SESSION_RENEGOTIATION,
+                sslyze.ScanCommand.HTTP_HEADERS,
+            },
         )
     except sslyze.ServerHostnameCouldNotBeResolved:
-        # Handle bad input ie. invalid hostnames
-        print("Error resolving the supplied hostnames")
+        print("Error resolving the supplied hostname")
         return []
 
     scanner = sslyze.Scanner()
@@ -43,82 +87,29 @@ def scan_target(target: str, port: int) -> list:
     accepted_ciphers = []
 
     for server_scan_result in scanner.get_results():
-
         if server_scan_result.scan_status == sslyze.ServerScanStatusEnum.ERROR_NO_CONNECTIVITY:
             print("The target could not be contacted")
             continue
 
-        ssl2_result = server_scan_result.scan_result.ssl_2_0_cipher_suites
-        ssl3_result = server_scan_result.scan_result.ssl_3_0_cipher_suites
-        tls1_0_result = server_scan_result.scan_result.tls_1_0_cipher_suites
-        tls1_1_result = server_scan_result.scan_result.tls_1_1_cipher_suites
-        tls1_2_result = server_scan_result.scan_result.tls_1_2_cipher_suites
-        tls1_3_result = server_scan_result.scan_result.tls_1_3_cipher_suites
+        for protocol_name, attr_name, is_deprecated in PROTOCOL_CHECKS:
+            attempt = getattr(server_scan_result.scan_result, attr_name)
 
-        if ssl2_result.result.accepted_cipher_suites:
-            accepted_ciphers.append(f'\nAccepted Ciphers for {crayons.red("SSL 2.0")}:')
-            for accepted_cipher_suite in ssl2_result.result.accepted_cipher_suites:
-                if 'CBC' in str(accepted_cipher_suite) and 'DHE' not in str(accepted_cipher_suite):
-                    accepted_ciphers.append('\t' + '- ' + crayons.magenta(accepted_cipher_suite.cipher_suite.name))
-                elif 'CBC' in str(accepted_cipher_suite):
-                    accepted_ciphers.append('\t' + '- ' + crayons.yellow(accepted_cipher_suite.cipher_suite.name))
-                elif 'DHE' not in str(accepted_cipher_suite):
-                    accepted_ciphers.append('\t' + '- ' + crayons.blue(accepted_cipher_suite.cipher_suite.name))
+            if attempt.status == ScanCommandAttemptStatusEnum.ERROR:
+                continue
+
+            ciphers = attempt.result.accepted_cipher_suites
+            if not ciphers:
+                continue
+
+            label = _colored(protocol_name, Fore.RED) if is_deprecated else protocol_name
+            accepted_ciphers.append(f'\nAccepted Ciphers for {label}:')
+
+            for cipher_suite in ciphers:
+                # TLS 1.3 only uses AEAD ciphers — no need for colour coding
+                if protocol_name == 'TLS 1.3':
+                    accepted_ciphers.append(f'\t- {cipher_suite.cipher_suite.name}')
                 else:
-                    accepted_ciphers.append('\t' + '- ' + accepted_cipher_suite.cipher_suite.name)
-
-        if ssl3_result.result.accepted_cipher_suites:
-            accepted_ciphers.append(f'\nAccepted Ciphers for {crayons.red("SSL 3.0")}:')
-            for accepted_cipher_suite in ssl3_result.result.accepted_cipher_suites:
-                if 'CBC' in str(accepted_cipher_suite) and 'DHE' not in str(accepted_cipher_suite):
-                    accepted_ciphers.append('\t' + '- ' + crayons.magenta(accepted_cipher_suite.cipher_suite.name))
-                elif 'CBC' in str(accepted_cipher_suite):
-                    accepted_ciphers.append('\t' + '- ' + crayons.yellow(accepted_cipher_suite.cipher_suite.name))
-                elif 'DHE' not in str(accepted_cipher_suite):
-                    accepted_ciphers.append('\t' + '- ' + crayons.blue(accepted_cipher_suite.cipher_suite.name))
-                else:
-                    accepted_ciphers.append('\t' + '- ' + accepted_cipher_suite.cipher_suite.name)
-
-        if tls1_0_result.result.accepted_cipher_suites:
-            accepted_ciphers.append(f'\nAccepted Ciphers for {crayons.red("TLS 1.0")}:')
-            for accepted_cipher_suite in tls1_0_result.result.accepted_cipher_suites:
-                if 'CBC' in str(accepted_cipher_suite) and 'DHE' not in str(accepted_cipher_suite):
-                    accepted_ciphers.append('\t' + '- ' + crayons.magenta(accepted_cipher_suite.cipher_suite.name))
-                elif 'CBC' in str(accepted_cipher_suite):
-                    accepted_ciphers.append('\t' + '- ' + crayons.yellow(accepted_cipher_suite.cipher_suite.name))
-                elif 'DHE' not in str(accepted_cipher_suite):
-                    accepted_ciphers.append('\t' + '- ' + crayons.blue(accepted_cipher_suite.cipher_suite.name))
-                else:
-                    accepted_ciphers.append('\t' + '- ' + accepted_cipher_suite.cipher_suite.name)
-
-        if tls1_1_result.result.accepted_cipher_suites:
-            accepted_ciphers.append(f'\nAccepted Ciphers for {crayons.red("TLS 1.1")}:')
-            for accepted_cipher_suite in tls1_1_result.result.accepted_cipher_suites:
-                if 'CBC' in str(accepted_cipher_suite) and 'DHE' not in str(accepted_cipher_suite):
-                    accepted_ciphers.append('\t' + '- ' + crayons.magenta(accepted_cipher_suite.cipher_suite.name))
-                elif 'CBC' in str(accepted_cipher_suite):
-                    accepted_ciphers.append('\t' + '- ' + crayons.yellow(accepted_cipher_suite.cipher_suite.name))
-                elif 'DHE' not in str(accepted_cipher_suite):
-                    accepted_ciphers.append('\t' + '- ' + crayons.blue(accepted_cipher_suite.cipher_suite.name))
-                else:
-                    accepted_ciphers.append('\t' + '- ' + accepted_cipher_suite.cipher_suite.name)
-
-        if tls1_2_result.result.accepted_cipher_suites:
-            accepted_ciphers.append('\nAccepted Ciphers for TLS 1.2:')
-            for accepted_cipher_suite in tls1_2_result.result.accepted_cipher_suites:
-                if 'CBC' in str(accepted_cipher_suite) and 'DHE' not in str(accepted_cipher_suite):
-                    accepted_ciphers.append('\t' + '- ' + crayons.magenta(accepted_cipher_suite.cipher_suite.name))
-                elif 'CBC' in str(accepted_cipher_suite):
-                    accepted_ciphers.append('\t' + '- ' + crayons.yellow(accepted_cipher_suite.cipher_suite.name))
-                elif 'DHE' not in str(accepted_cipher_suite):
-                    accepted_ciphers.append('\t' + '- ' + crayons.blue(accepted_cipher_suite.cipher_suite.name))
-                else:
-                    accepted_ciphers.append('\t' + '- ' + accepted_cipher_suite.cipher_suite.name)
-
-        if tls1_3_result.result.accepted_cipher_suites:
-            accepted_ciphers.append('\nAccepted Ciphers for TLS 1.3:')
-            for accepted_cipher_suite in tls1_3_result.result.accepted_cipher_suites:
-                accepted_ciphers.append('\t' + '- ' + accepted_cipher_suite.cipher_suite.name)
+                    accepted_ciphers.append(_format_cipher(cipher_suite))
 
     return accepted_ciphers
 
@@ -130,26 +121,39 @@ def main():
     """
     sys.tracebacklimit = 0
 
+    parser = argparse.ArgumentParser(
+        prog='cipherchk',
+        description='Check accepted TLS/SSL cipher suites for a target host',
+    )
+    parser.add_argument('target', nargs='?', help='Hostname or IP address of the target')
+    parser.add_argument('port', nargs='?', type=int, help='Port number to connect to')
+    args = parser.parse_args()
+
+    target = args.target
+    port = args.port
+
     try:
-        target = sys.argv[1]
-        port = int(sys.argv[2])
+        if not target:
+            target = input('[+] target: ')
+        if not port:
+            port = int(input('[+] port: '))
     except KeyboardInterrupt:
         sys.exit(0)
-    except IndexError:
-        target = input('[+] target: ')
-        port = int(input('[+] port: '))
 
-    print(f'[+] Checking Accepted Cipher Suites for: {crayons.green(target)}')
+    print(f'[+] Checking Accepted Cipher Suites for: {_colored(target, Fore.GREEN)}')
     print((
         '\n'
-        'Depreciated protocols are shown in {}\n'
-        'CBC Ciphers that also do not have PFS are shown in {}\n'
-        'CBC Ciphers are shown in {}\nCiphers missing PFS are shown in {}'
+        'Deprecated protocols are shown in {}\n'
+        'CBC ciphers without PFS are shown in {}\n'
+        'CBC ciphers are shown in {}\n'
+        'Ciphers missing PFS are shown in {}'
     ).format(
-        crayons.red('red', bold=True),
-        crayons.magenta('magenta', bold=True),
-        crayons.yellow('yellow', bold=True),
-        crayons.blue('blue', bold=True)))
+        _colored('red', Fore.RED, bold=True),
+        _colored('magenta', Fore.MAGENTA, bold=True),
+        _colored('yellow', Fore.YELLOW, bold=True),
+        _colored('blue', Fore.BLUE, bold=True),
+    ))
+
     for cipher in scan_target(target, port):
         print(cipher)
 
