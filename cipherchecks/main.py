@@ -97,6 +97,9 @@ def scan_target(target: str, port: int) -> list:
             if attempt.status == ScanCommandAttemptStatusEnum.ERROR:
                 continue
 
+            if attempt.result is None:
+                continue
+
             ciphers = attempt.result.accepted_cipher_suites
             if not ciphers:
                 continue
@@ -105,9 +108,14 @@ def scan_target(target: str, port: int) -> list:
             accepted_ciphers.append(f'\nAccepted Ciphers for {label}:')
 
             for cipher_suite in ciphers:
+                name = cipher_suite.cipher_suite.name
+                # SSL 2.0 and SSL 3.0 are categorically broken (DROWN, POODLE) —
+                # individual cipher properties are irrelevant; show all in red.
+                if protocol_name in ('SSL 2.0', 'SSL 3.0'):
+                    accepted_ciphers.append(f'\t- {_colored(name, Fore.RED)}')
                 # TLS 1.3 only uses AEAD ciphers — no need for colour coding
-                if protocol_name == 'TLS 1.3':
-                    accepted_ciphers.append(f'\t- {cipher_suite.cipher_suite.name}')
+                elif protocol_name == 'TLS 1.3':
+                    accepted_ciphers.append(f'\t- {name}')
                 else:
                     accepted_ciphers.append(_format_cipher(cipher_suite))
 
