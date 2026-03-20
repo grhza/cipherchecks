@@ -1,4 +1,4 @@
-New FROM python:3.13-slim
+FROM python:3.13-slim
 
 # Configure Poetry
 ENV POETRY_VERSION=2.2.1
